@@ -27,3 +27,13 @@ export const CreateTransactionSchema = z.object({
   accountId: z.string(),
   categoryId: z.string().optional(),
 });
+
+export const CreateCategorySchema = z.object({
+  name: z.string().min(1),
+  keywords: z.array(z.string()).default([]), // for auto-categorization later
+});
+
+export const UpdateCategorySchema = z.object({
+  name: z.string().optional(),
+  keywords: z.array(z.string()).optional(),
+});
