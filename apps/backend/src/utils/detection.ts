@@ -13,6 +13,7 @@ export async function detectAccount(
 
   // Try matching by last 4 digits 
   const digitsMatch = sms.match(/\b(\d{4})\b/);
+  console.log("Digits match:", digitsMatch);
 
   if (digitsMatch) {
     const lastFour = digitsMatch[1] as string;

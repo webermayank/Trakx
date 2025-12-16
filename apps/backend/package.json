@@ -10,7 +10,8 @@
     "dev": "tsx src/index.ts"
   },
   "devDependencies": {
-    "tsx": "^4.7.0"
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0"
   },
   "keywords": [],
   "author": "",

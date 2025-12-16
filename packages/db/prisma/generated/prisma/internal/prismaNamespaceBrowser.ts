@@ -94,7 +94,8 @@ export const TransactionScalarFieldEnum = {
   paymentMethod: 'paymentMethod',
   categoryId: 'categoryId',
   createdAt: 'createdAt',
-  accountId: 'accountId'
+  accountId: 'accountId',
+  smsHash: 'smsHash'
 } as const
 
 export type TransactionScalarFieldEnum = (typeof TransactionScalarFieldEnum)[keyof typeof TransactionScalarFieldEnum]

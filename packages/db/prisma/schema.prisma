@@ -32,6 +32,8 @@ model Transaction {
   account       Account   @relation(fields: [accountId], references: [id])
   category      Category? @relation(fields: [categoryId], references: [id])
   user          User      @relation(fields: [userId], references: [id])
+  smsHash       String?   
+  @@unique([userId, smsHash])
 }
 
 model Category {

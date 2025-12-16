@@ -2,6 +2,7 @@ import prisma from '@trakx/db';
 import { type Request, type Response } from 'express';
 import {parseSMS} from '../utils/smsParser.js'
 import { matchCategory } from "../utils/categoryMatch.js";
+import { generateSmsHash } from "../utils/smsHash.js";
 import { detectAccount } from "../utils/detection.js";
 
 
@@ -11,6 +12,24 @@ export async function ingestSMS(req : Request , res : Response) {
     try {
       const { sms } = req.body;
       const userId = req.user?.userId as string;
+
+      const smsHash = generateSmsHash(sms);
+
+      // 1️⃣ Check duplicate
+      const existing = await prisma.transaction.findFirst({
+        where: {
+          userId,
+          smsHash
+        }
+      });
+
+      if (existing) {
+        return res.status(200).json({
+          success: true,
+          message: "Duplicate SMS ignored",
+          transactionId: existing.id
+        });
+      }
 
       if (!sms || typeof sms !== "string") {
         return res.status(400).json({ error: "SMS is required" });
@@ -42,6 +61,7 @@ export async function ingestSMS(req : Request , res : Response) {
           paymentMethod: parsed.paymentMethod,
           description: sms,
           categoryId,
+          smsHash,
         },
       });
 
