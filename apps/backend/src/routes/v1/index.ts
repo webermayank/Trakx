@@ -3,7 +3,9 @@ import authRoutes from "./auth.js";
 import accountRoutes from './account.js';
 import transactionRoutes from './transaction.js';
 import smsRoutes from './sms.js'
-import categoryRoutes from './category.js'
+import categoryRoutes from './category.js';
+import analyticalRoutes from './analytical.js';
+
 
 const router = Router();
 
@@ -12,6 +14,7 @@ router.use('/acc', accountRoutes);
 router.use('/trxn', transactionRoutes);
 router.use('/cats', categoryRoutes);
 router.use('/ingest',smsRoutes );
+router.use('/analysis', analyticalRoutes );
 
 
 export default router;
