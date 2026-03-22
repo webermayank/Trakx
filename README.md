@@ -32,3 +32,5 @@ Built with a production-ready architecture, focusing on scalability, clean syste
 - Built secure authentication (JWT) with protected route architecture
 - Developed transaction processing pipeline (`raw SMS → parsed data → structured DB entry`)
 - Designed backend using modular MVC architecture
+
+### Mobile APP - https://github.com/webermayank/Trakx--RN-app
