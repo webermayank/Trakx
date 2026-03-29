@@ -8,18 +8,17 @@ import { authMiddleware } from "../../middleware/auth.js";
 
 const router = Router();
 
-// POST /auth/register
 router.post("/register", async (req, res) => {
   const parsedData = SignupSchema.safeParse(req.body);
   if (!parsedData.success) {
-    console.log("no pared data");
+    console.log("no parsed data");
 
     return res
       .status(400)
       .json({ error: "Invalid data", issues: parsedData.error.issues });
   }
   // Hash the plain password from the request; DB field is passwordHash
-  const hashedPassword = await hash(parsedData.data.passwordHash);
+  const hashedPassword = await hash(parsedData.data.password);
   try {
     const user = await prisma.user.create({
       data: {
@@ -69,7 +68,7 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
     const isPasswordValid = await compare(
-      parsed.data.passwordHash,
+      parsed.data.password,
       user.passwordHash
     );
 
