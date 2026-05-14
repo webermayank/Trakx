@@ -8,7 +8,7 @@ import apiRoutes from "./routes/v1/index.js";
 const app = express();
 
 app.use(cors({
-    origin: "http://localhost:8081", // Allow all origins
+    origin: true,
     credentials: true
 }));
 
