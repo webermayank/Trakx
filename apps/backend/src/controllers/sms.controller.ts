@@ -1,9 +1,10 @@
 import prisma from "@trakx/db";
 import { type Request, type Response } from "express";
 import { matchCategory } from "../utils/categoryMatch.js";
-import { detectAccount } from "../utils/detection.js";
+import { detectOrCreateAccount } from "../utils/detection.js";
 import { generateSmsHash } from "../utils/smsHash.js";
-import { parseSMS } from "../utils/smsParser.js";
+import { parseSmsWithOpenAi } from "../utils/openaiSmsParser.js";
+import { storeTrainingData } from "../utils/sms/trainingData.js";
 
 type SmsImportPayload = {
   sms: string;
@@ -16,6 +17,54 @@ type SmsImportResult =
   | { status: "duplicate"; transactionId: string; reason: string }
   | { status: "skipped"; reason: string }
   | { status: "failed"; reason: string };
+
+export async function classifySMSBatch(req: Request, res: Response) {
+  try {
+    const messages = req.body?.messages;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: "messages array is required" });
+    }
+
+    const results = await Promise.all(
+      (messages as SmsImportPayload[]).map(async (message, index) => {
+        const parsed = await parseSmsWithOpenAi({
+          sms: message.sms,
+          ...(message.address !== undefined ? { address: message.address } : {}),
+        });
+
+        await storeTrainingData({
+          sms: message.sms,
+          sender: message.address ?? null,
+          parserOutput: parsed,
+          confidence: parsed.confidence,
+          timestamp: new Date().toISOString(),
+        });
+
+        return {
+          index,
+          isTransactional: parsed.isTransactional,
+          direction: parsed.direction,
+          transactionStatus: parsed.transactionStatus,
+          amount: parsed.amount,
+          merchant: parsed.merchant,
+          paymentMethod: parsed.paymentMethod,
+          confidence: parsed.confidence,
+          parserUsed: parsed.parserUsed,
+          bank: parsed.bank,
+          category: parsed.category,
+          recurring: parsed.recurring,
+          reason: parsed.reason ?? null,
+        };
+      })
+    );
+
+    return res.json({ success: true, results });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Error classifying SMS batch" });
+  }
+}
 
 async function processSmsImport(
   payload: SmsImportPayload,
@@ -40,19 +89,37 @@ async function processSmsImport(
     };
   }
 
-  const parsed = parseSMS(sms);
+  const parsed = await parseSmsWithOpenAi({
+    sms,
+    ...(payload.address !== undefined ? { address: payload.address } : {}),
+  });
+
+  await storeTrainingData({
+    sms,
+    sender: payload.address ?? null,
+    parserOutput: parsed,
+    confidence: parsed.confidence,
+    timestamp: new Date().toISOString(),
+  });
+
   if (!parsed.amount) {
     return { status: "skipped", reason: "Could not detect amount" };
   }
 
   if (!parsed.isTransactional) {
-    return { status: "skipped", reason: "Not a transactional SMS" };
+    return {
+      status: "skipped",
+      reason: parsed.reason || "Not a transactional SMS",
+    };
   }
 
-  const accountId = await detectAccount(prisma, userId, sms);
-  if (!accountId) {
-    return { status: "skipped", reason: "Account could not be detected" };
-  }
+  const accountId = await detectOrCreateAccount({
+    prisma,
+    userId,
+    sms,
+    parsed,
+    ...(payload.address !== undefined ? { address: payload.address } : {}),
+  });
 
   const categoryId = await matchCategory(prisma, userId, parsed.merchant || "");
   const transactionDate =
@@ -77,7 +144,18 @@ async function processSmsImport(
   return {
     status: "imported",
     transactionId: transaction.id,
-    transaction,
+    transaction: {
+      ...transaction,
+      sender: parsed.sender,
+      bank: parsed.bank,
+      category: parsed.category,
+      direction: parsed.direction,
+      confidence: parsed.confidence,
+      parserUsed: parsed.parserUsed,
+      accountHint: parsed.accountHint,
+      recurring: parsed.recurring,
+      rawSms: parsed.rawSms,
+    },
   };
 }
 
