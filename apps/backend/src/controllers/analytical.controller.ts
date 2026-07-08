@@ -1,98 +1,95 @@
-import prisma  from '@trakx/db';
-import { type Request, type Response } from 'express';
+import prisma from "@trakx/db";
+import { type Request, type Response } from "express";
+import { asyncHandler } from "../utils/asyncHandler.js";
 
-export const getSummary = async (req: Request, res: Response) => {
-    const userId = req.user!.userId;
+// ─── GET /analysis/summary ────────────────────────────────────────────────────
+export const getSummary = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
 
-    const [total, last30Days] = await Promise.all([
-        prisma.transaction.aggregate({
-            where: { userId },
-            _sum: { amount: true },
-            _count: true,
-        }),
-        prisma.transaction.aggregate({
-            where: {
-                userId,
-                date: {
-                    gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-                },
-            },
-            _sum: { amount: true },
-        }),
-    ]);
+  const [total, last30Days] = await Promise.all([
+    prisma.transaction.aggregate({
+      where: { userId },
+      _sum: { amount: true },
+      _count: true,
+    }),
+    prisma.transaction.aggregate({
+      where: {
+        userId,
+        date: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+      _sum: { amount: true },
+    }),
+  ]);
 
-    res.json({
-        totalSpent: total._sum.amount ?? 0,
-        totalTransactions: total._count,
-        last30DaysSpent: last30Days._sum.amount ?? 0,
-    });
-};
+  return res.json({
+    totalSpent: total._sum.amount ?? 0,
+    totalTransactions: total._count,
+    last30DaysSpent: last30Days._sum.amount ?? 0,
+  });
+});
 
-export const byCategory = async (req: Request, res: Response) => {
-    const userId = req.user!.userId;
+// ─── GET /analysis/by-category ───────────────────────────────────────────────
+export const byCategory = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
 
-    const data = await prisma.transaction.groupBy({
-        by: ["categoryId"],
-        where: { userId },
-        _sum: { amount: true },
-    });
+  const [data, categories] = await Promise.all([
+    prisma.transaction.groupBy({
+      by: ["categoryId"],
+      where: { userId },
+      _sum: { amount: true },
+      _count: true,
+    }),
+    prisma.category.findMany({ where: { userId } }),
+  ]);
 
-    const categories = await prisma.category.findMany({
-        where: { userId },
-    });
+  const result = data.map((d) => ({
+    category: categories.find((c) => c.id === d.categoryId)?.name ?? "Uncategorized",
+    amount: d._sum.amount ?? 0,
+    count: d._count,
+  }));
 
-    const result = data.map(d => ({
-        category:
-            categories.find(c => c.id === d.categoryId)?.name ?? "Uncategorized",
-        amount: d._sum.amount ?? 0,
-    }));
+  return res.json(result);
+});
 
-    res.json(result);
-};
+// ─── GET /analysis/monthly ────────────────────────────────────────────────────
+// Uses DB-level grouping instead of fetching all rows into memory
+export const monthly = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
 
+  // Prisma doesn't have a native groupBy date-truncate, so we use a raw query
+  // that is safe because userId comes from the verified JWT, not from request params
+  const rows = await prisma.$queryRaw<{ month: string; amount: number }[]>`
+    SELECT
+      to_char("date", 'YYYY-MM') AS month,
+      COALESCE(SUM(amount), 0)::float AS amount
+    FROM "Transaction"
+    WHERE "userId" = ${userId}
+    GROUP BY to_char("date", 'YYYY-MM')
+    ORDER BY month ASC
+  `;
 
-export const monthly = async (req: Request, res: Response) => {
-    const userId = req.user!.userId;
+  return res.json(rows);
+});
 
-    const txns = await prisma.transaction.findMany({
-        where: { userId },
-        select: { amount: true, date: true },
-    });
+// ─── GET /analysis/by-account ─────────────────────────────────────────────────
+export const byAccount = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
 
-    const map = new Map<string, number>();
+  const [data, accounts] = await Promise.all([
+    prisma.transaction.groupBy({
+      by: ["accountId"],
+      where: { userId },
+      _sum: { amount: true },
+      _count: true,
+    }),
+    prisma.account.findMany({ where: { userId } }),
+  ]);
 
-    txns.forEach(tx => {
-        const key = `${tx.date.getFullYear()}-${tx.date.getMonth() + 1}`;
-        map.set(key, (map.get(key) ?? 0) + tx.amount);
-    });
+  const result = data.map((d) => ({
+    account: accounts.find((a) => a.id === d.accountId)?.name ?? "Unknown",
+    amount: d._sum.amount ?? 0,
+    count: d._count,
+  }));
 
-    const result = Array.from(map.entries()).map(([month, amount]) => ({
-        month,
-        amount,
-    }));
-
-    res.json(result);
-};
-
-
-export const byAccount = async (req: Request, res: Response) => {
-    const userId = req.user!.userId;
-
-    const data = await prisma.transaction.groupBy({
-        by: ["accountId"],
-        where: { userId },
-        _sum: { amount: true },
-    });
-
-    const accounts = await prisma.account.findMany({
-        where: { userId },
-    });
-
-    const result = data.map(d => ({
-        account:
-            accounts.find(a => a.id === d.accountId)?.name ?? "Unknown",
-        amount: d._sum.amount ?? 0,
-    }));
-
-    res.json(result);
-};
+  return res.json(result);
+});
